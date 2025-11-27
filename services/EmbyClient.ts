@@ -73,7 +73,7 @@ export class EmbyClient extends MediaClient {
         }
 
         // --- Standard Feed ---
-        const FETCH_BATCH_SIZE = 50; 
+        const FETCH_BATCH_SIZE = feedType === 'random' ? 80 : 50; 
         const params = new URLSearchParams({
             IncludeItemTypes: 'Movie,Video,Episode',
             Recursive: 'true',

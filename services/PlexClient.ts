@@ -65,7 +65,7 @@ export class PlexClient extends MediaClient {
 
         // Plex Pagination
         const start = skip;
-        const size = 50; // Batch size
+        const size = feedType === 'random' ? 80 : 50; // Batch size
         
         let sort = 'addedAt:desc';
         if (feedType === 'random') sort = 'random';

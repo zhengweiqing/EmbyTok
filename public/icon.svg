@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#000000"/>
+  <defs>
+    <style>
+      .k-font {
+        font-family: sans-serif;
+        font-weight: 900;
+        font-size: 650px;
+        text-anchor: middle;
+      }
+    </style>
+  </defs>
+  <!-- Cyan Layer (Offset Left/Top) -->
+  <text x="48%" y="83%" class="k-font" fill="#25F4EE" opacity="0.9">K</text>
+  
+  <!-- Red Layer (Offset Right/Bottom) -->
+  <text x="52%" y="87%" class="k-font" fill="#FE2C55" opacity="0.9">K</text>
+  
+  <!-- White Layer (Center) -->
+  <text x="50%" y="85%" class="k-font" fill="#FFFFFF">K</text>
+</svg>
