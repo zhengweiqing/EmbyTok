@@ -16,13 +16,7 @@ export class PlexClient extends MediaClient {
     }
 
     async authenticate(username: string, password: string): Promise<ServerConfig> {
-        // NOTE: Plex auth usually requires hitting plex.tv. 
-        // For this local client, we will try to use the 'password' field as the Token if 'username' is empty,
-        // OR try to sign in via the server's local auth endpoint if available.
-        // Simplifying for MVP: We assume the user enters the Plex Token in the password field if using direct connection.
-        
-        // However, let's try a basic check.
-        const token = password; // Assuming password is token for manual direct connection
+        const token = password; 
         
         const response = await fetch(`${this.getCleanUrl()}/identity`, {
             headers: { 'Accept': 'application/json', 'X-Plex-Token': token }
@@ -37,7 +31,7 @@ export class PlexClient extends MediaClient {
         return {
             url: this.config.url,
             username: username || 'Plex User',
-            userId: '1', // Plex local admin is usually 1, or we parse from /accounts
+            userId: '1', 
             token: token,
             serverType: 'plex'
         };
@@ -48,7 +42,6 @@ export class PlexClient extends MediaClient {
         if (!response.ok) throw new Error('Failed to fetch Plex libraries');
         const data = await response.json();
         
-        // Map Plex Sections to EmbyLibrary
         return data.MediaContainer.Directory.map((d: any) => ({
             Id: d.key,
             Name: d.title,
@@ -58,21 +51,17 @@ export class PlexClient extends MediaClient {
 
     async getVerticalVideos(parentId: string | undefined, libraryName: string, feedType: FeedType, skip: number, limit: number): Promise<VideoResponse> {
         if (!parentId) {
-            // If no library selected, we can't really query "all" easily in Plex without iterating sections.
-            // Return empty for safety.
             return { items: [], nextStartIndex: 0, totalCount: 0 };
         }
 
-        // Plex Pagination
         const start = skip;
-        const size = feedType === 'random' ? 80 : 50; // Batch size
+        const size = feedType === 'random' ? 80 : 50; 
         
         let sort = 'addedAt:desc';
         if (feedType === 'random') sort = 'random';
         
-        // Construct URL: /library/sections/{id}/all?type=1 (Movie) ...
         const params = new URLSearchParams({
-            type: '1', // 1=Movie, 8=Episode? Simplified to Movie/Video type 1 for now
+            type: '1', 
             sort: sort,
             'X-Plex-Container-Start': start.toString(),
             'X-Plex-Container-Size': size.toString()
@@ -87,7 +76,6 @@ export class PlexClient extends MediaClient {
         const items = data.MediaContainer.Metadata || [];
         const totalSize = data.MediaContainer.totalSize || 0;
 
-        // Map Plex Item to EmbyItem
         const mappedItems: EmbyItem[] = items.map((p: any) => {
              const media = p.Media?.[0];
              return {
@@ -99,17 +87,15 @@ export class PlexClient extends MediaClient {
                  ProductionYear: p.year,
                  Width: media?.width,
                  Height: media?.height,
-                 RunTimeTicks: p.duration ? p.duration * 10000 : undefined, // Plex ms -> Emby Ticks (10000)
+                 RunTimeTicks: p.duration ? p.duration * 10000 : undefined, 
                  ImageTags: {
-                     Primary: p.thumb ? 'true' : undefined // We use the existence as a flag, URL logic handles the rest
+                     Primary: p.thumb ? 'true' : undefined 
                  },
-                 // Store raw path for URL generation if needed
                  _PlexThumb: p.thumb,
                  _PlexKey: media?.Part?.[0]?.key
              };
         });
 
-        // Filter Vertical
         const filtered = mappedItems.filter(item => {
             const w = item.Width || 0;
             const h = item.Height || 0;
@@ -118,35 +104,34 @@ export class PlexClient extends MediaClient {
 
         return {
             items: filtered,
-            nextStartIndex: start + items.length, // Plex cursor moves by count fetched
+            nextStartIndex: start + items.length, 
             totalCount: totalSize
         };
     }
 
-    getVideoUrl(itemId: string): string {
-        // Using Transcode universal endpoint for compatibility
-        // But for simplicity, we can try Direct Play via the part key if we had it, or the universal generic.
-        // Let's use the generic "video/:/transcode/universal/start" logic
-        return `${this.getCleanUrl()}/video/:/transcode/universal/start?path=${encodeURIComponent('/library/metadata/' + itemId)}&mediaIndex=0&partIndex=0&protocol=hls&offset=0&fastSeek=1&directPlay=0&directStream=1&subtitleSize=100&audioBoost=100&X-Plex-Token=${this.config.token}`;
+    getVideoUrl(item: EmbyItem): string {
+        // Fix for Android/PC: Prioritize Direct Play if Part Key exists.
+        // This links directly to the .mp4 file instead of HLS stream.
+        const plexItem = item as any;
+        if (plexItem._PlexKey) {
+            return `${this.getCleanUrl()}${plexItem._PlexKey}?X-Plex-Token=${this.config.token}`;
+        }
+
+        // Fallback to Transcode Universal (HLS)
+        return `${this.getCleanUrl()}/video/:/transcode/universal/start?path=${encodeURIComponent('/library/metadata/' + item.Id)}&mediaIndex=0&partIndex=0&protocol=hls&offset=0&fastSeek=1&directPlay=0&directStream=1&subtitleSize=100&audioBoost=100&X-Plex-Token=${this.config.token}`;
     }
 
     getImageUrl(itemId: string, tag?: string, type?: 'Primary' | 'Backdrop'): string {
-        // Plex Image Transcoder
-        // We need to fetch the item metadata to get the actual thumb path usually, 
-        // but let's assume standard structure: /library/metadata/{id}/thumb/{timestamp}
-        // Or cleaner: /photo/:/transcode?url=...
         const cleanUrl = this.getCleanUrl();
-        const urlParam = `/library/metadata/${itemId}/thumb`; // Approximate
+        const urlParam = `/library/metadata/${itemId}/thumb`; 
         return `${cleanUrl}/photo/:/transcode?url=${encodeURIComponent(urlParam)}&width=800&height=1200&X-Plex-Token=${this.config.token}`;
     }
 
     async getFavorites(libraryName: string): Promise<Set<string>> {
-        // Not implemented for Plex in this version
         return new Set();
     }
 
     async toggleFavorite(itemId: string, isFavorite: boolean, libraryName: string): Promise<void> {
-        // Not implemented for Plex in this version
         console.warn("Favorites not yet supported for Plex");
     }
 }

@@ -119,8 +119,8 @@ export class EmbyClient extends MediaClient {
         };
     }
 
-    getVideoUrl(itemId: string): string {
-        return `${this.getCleanUrl()}/Videos/${itemId}/stream.mp4?Static=true&api_key=${this.config.token}`;
+    getVideoUrl(item: EmbyItem): string {
+        return `${this.getCleanUrl()}/Videos/${item.Id}/stream.mp4?Static=true&api_key=${this.config.token}`;
     }
 
     getImageUrl(itemId: string, tag?: string, type: 'Primary' | 'Backdrop' = 'Primary'): string {

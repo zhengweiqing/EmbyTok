@@ -45,10 +45,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const isLongPress = useRef(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Determine URL based on Plex Key or Emby ID
-  const videoSrc = (item as any)._PlexKey 
-     ? client.getVideoUrl((item as any)) // Plex needs full object for Part Key
-     : client.getVideoUrl(item.Id);      // Emby uses ID
+  // Determine URL (Pass full item to support Plex Direct Play)
+  const videoSrc = client.getVideoUrl(item);
 
   const posterSrc = item.ImageTags?.Primary 
     ? client.getImageUrl(item.Id, item.ImageTags.Primary, 'Primary') 
@@ -107,29 +105,24 @@ const VideoCard: React.FC<VideoCardProps> = ({
       }
   };
 
-  // --- Button Handlers with Stop Propagation ---
-  // IMPORTANT: We use onClick for the action to avoid double-firing (touchend + click).
-  // But we MUST use onTouchStart to stop propagation so the parent container's 
-  // Long Press timer doesn't start when touching a button.
+  // --- Button Handlers with Robust Touch Support ---
+  // To solve "buttons not clicking" on mobile while preventing parent gestures:
+  // 1. onTouchStart: stopPropagation (Prevents parent Long Press)
+  // 2. onTouchEnd: stopPropagation + preventDefault + ACTION (Handles "Tap" immediately)
+  // 3. onClick: stopPropagation + ACTION (Handles Desktop, ignored on mobile if preventDefault called)
+  
+  const handleButtonAction = (e: React.TouchEvent | React.MouseEvent, action: () => void) => {
+      e.stopPropagation();
+      // If it's a touch end event, we prevent default to avoid ghost click
+      if (e.type === 'touchend') {
+          e.preventDefault(); 
+      }
+      action();
+  };
 
   const stopProp = (e: React.TouchEvent | React.MouseEvent) => {
       e.stopPropagation();
   };
-
-  const handleFavorite = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onToggleFavorite();
-  };
-
-  const handleMuteToggle = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onToggleMute();
-  };
-
-  const handleInfoToggle = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setShowInfo(!showInfo);
-  }
 
   const handleContextMenu = (e: React.MouseEvent | React.TouchEvent) => {
       e.preventDefault();
@@ -252,7 +245,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
     >
       <video
         ref={videoRef}
-        className="w-full h-full object-cover pointer-events-none" // pointer-events-none ensures touches go to container
+        className="w-full h-full object-cover pointer-events-none" 
         src={videoSrc}
         poster={posterSrc}
         loop
@@ -304,8 +297,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
         </div>
       )}
 
-      {/* RIGHT SIDEBAR ACTION BAR */}
-      <div className="absolute right-2 bottom-24 flex flex-col items-center gap-6 z-20 pointer-events-auto">
+      {/* RIGHT SIDEBAR ACTION BAR (Z-30 to ensure it is above bottom gradient) */}
+      <div className="absolute right-2 bottom-24 flex flex-col items-center gap-6 z-30 pointer-events-auto">
           <div className="relative w-12 h-12 mb-2">
               <div className="w-12 h-12 rounded-full border-2 border-white overflow-hidden bg-zinc-800">
                   {posterSrc ? (
@@ -320,7 +313,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
               <button 
                 onTouchStart={stopProp} 
                 onMouseDown={stopProp}
-                onClick={handleFavorite} 
+                onTouchEnd={(e) => handleButtonAction(e, onToggleFavorite)}
+                onClick={(e) => handleButtonAction(e, onToggleFavorite)}
                 className="p-2 rounded-full transition-transform active:scale-75"
               >
                   <Heart 
@@ -337,7 +331,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
               <button 
                 onTouchStart={stopProp}
                 onMouseDown={stopProp}
-                onClick={handleInfoToggle}
+                onTouchEnd={(e) => handleButtonAction(e, () => setShowInfo(!showInfo))}
+                onClick={(e) => handleButtonAction(e, () => setShowInfo(!showInfo))}
                 className="p-2 rounded-full bg-white/10 backdrop-blur-sm active:bg-white/20"
               >
                   <Info className="w-7 h-7 text-white drop-shadow-md" />
@@ -348,7 +343,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
            <div 
                 onTouchStart={stopProp}
                 onMouseDown={stopProp}
-                onClick={handleMuteToggle}
+                onTouchEnd={(e) => handleButtonAction(e, onToggleMute)}
+                onClick={(e) => handleButtonAction(e, onToggleMute)}
                 className={`mt-4 w-10 h-10 rounded-full bg-zinc-900 border-4 cursor-pointer transition-colors duration-300 flex items-center justify-center overflow-hidden ${isMuted ? 'border-red-500/80' : 'border-zinc-800'} ${isPlaying ? 'animate-[spin_4s_linear_infinite]' : ''}`}
            >
                 {posterSrc ? (
@@ -359,7 +355,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
            </div>
       </div>
 
-      <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent transition-all duration-300 pointer-events-auto ${showInfo ? 'h-2/3 from-black/95' : 'pt-24'}`}>
+      <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent transition-all duration-300 pointer-events-auto z-10 ${showInfo ? 'h-2/3 from-black/95' : 'pt-24'}`}>
         <div className="flex flex-col items-start max-w-[80%]">
             <h3 className="text-white font-bold text-lg drop-shadow-md mb-2 leading-tight">
               {item.Name}
@@ -374,7 +370,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
             <div 
                 onTouchStart={stopProp}
                 onMouseDown={stopProp}
-                onClick={handleInfoToggle}
+                onTouchEnd={(e) => handleButtonAction(e, () => setShowInfo(!showInfo))}
+                onClick={(e) => handleButtonAction(e, () => setShowInfo(!showInfo))}
                 className={`text-white/80 text-sm drop-shadow-md transition-all duration-300 cursor-pointer ${showInfo ? 'line-clamp-none overflow-y-auto max-h-[40vh]' : 'line-clamp-2'}`}
             >
                 {item.Overview || '暂无简介'}
@@ -384,7 +381,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
                 <button 
                     onTouchStart={stopProp}
                     onMouseDown={stopProp}
-                    onClick={handleInfoToggle}
+                    onTouchEnd={(e) => handleButtonAction(e, () => setShowInfo(!showInfo))}
+                    onClick={(e) => handleButtonAction(e, () => setShowInfo(!showInfo))}
                     className="text-white/60 text-xs font-semibold mt-1"
                 >
                     更多

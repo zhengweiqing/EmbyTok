@@ -20,7 +20,7 @@ export abstract class MediaClient {
         limit: number
     ): Promise<VideoResponse>;
 
-    abstract getVideoUrl(itemId: string): string;
+    abstract getVideoUrl(item: EmbyItem): string;
     
     abstract getImageUrl(itemId: string, tag?: string, type?: 'Primary' | 'Backdrop'): string;
 
