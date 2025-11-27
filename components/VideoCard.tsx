@@ -32,6 +32,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   // Progress State
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isSeeking, setIsSeeking] = useState(false);
 
   // Gesture State
   const [playbackRate, setPlaybackRate] = useState(1.0);
@@ -44,7 +45,11 @@ const VideoCard: React.FC<VideoCardProps> = ({
   const isLongPress = useRef(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const videoSrc = client.getVideoUrl(item.Id);
+  // Determine URL based on Plex Key or Emby ID
+  const videoSrc = (item as any)._PlexKey 
+     ? client.getVideoUrl((item as any)) // Plex needs full object for Part Key
+     : client.getVideoUrl(item.Id);      // Emby uses ID
+
   const posterSrc = item.ImageTags?.Primary 
     ? client.getImageUrl(item.Id, item.ImageTags.Primary, 'Primary') 
     : undefined;
@@ -91,7 +96,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
   };
 
   const handleTimeUpdate = () => {
-      if (videoRef.current) {
+      if (videoRef.current && !isSeeking) {
           setCurrentTime(videoRef.current.currentTime);
       }
   };
@@ -102,23 +107,64 @@ const VideoCard: React.FC<VideoCardProps> = ({
       }
   };
 
-  const handleFavorite = (e: React.MouseEvent | React.TouchEvent) => {
+  // --- Button Handlers with Stop Propagation ---
+  // IMPORTANT: We use onClick for the action to avoid double-firing (touchend + click).
+  // But we MUST use onTouchStart to stop propagation so the parent container's 
+  // Long Press timer doesn't start when touching a button.
+
+  const stopProp = (e: React.TouchEvent | React.MouseEvent) => {
+      e.stopPropagation();
+  };
+
+  const handleFavorite = (e: React.MouseEvent) => {
       e.stopPropagation();
       onToggleFavorite();
   };
 
-  const handleMuteToggle = (e: React.MouseEvent | React.TouchEvent) => {
+  const handleMuteToggle = (e: React.MouseEvent) => {
       e.stopPropagation();
       onToggleMute();
   };
+
+  const handleInfoToggle = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setShowInfo(!showInfo);
+  }
 
   const handleContextMenu = (e: React.MouseEvent | React.TouchEvent) => {
       e.preventDefault();
   };
 
+  // --- Seek Bar Handlers ---
+  const handleSeekStart = (e: React.TouchEvent | React.MouseEvent) => {
+      e.stopPropagation();
+      setIsSeeking(true);
+  };
+
+  const handleSeekMove = (e: React.TouchEvent | React.MouseEvent) => {
+      e.stopPropagation();
+      if (!isSeeking || !containerRef.current) return;
+      
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const rect = containerRef.current.getBoundingClientRect();
+      const percent = Math.max(0, Math.min(1, clientX / rect.width));
+      setCurrentTime(percent * duration);
+  };
+
+  const handleSeekEnd = (e: React.TouchEvent | React.MouseEvent) => {
+      e.stopPropagation();
+      if (!isSeeking) return;
+      
+      setIsSeeking(false);
+      if (videoRef.current) {
+          videoRef.current.currentTime = currentTime;
+      }
+  };
+
   // --- Gesture Handlers ---
 
   const handleTouchStart = (e: React.TouchEvent) => {
+      // If we are here, it means the touch was NOT on a button (because buttons call stopPropagation)
       touchStartX.current = e.touches[0].clientX;
       touchStartY.current = e.touches[0].clientY;
       isDragging.current = false;
@@ -189,7 +235,7 @@ const VideoCard: React.FC<VideoCardProps> = ({
       }
   };
 
-  const formatTime = (ticks?: number) => {
+  const formatTimeText = (ticks?: number) => {
       if (!ticks) return '';
       const minutes = Math.round(ticks / 10000000 / 60);
       return `${minutes} 分钟`;
@@ -235,25 +281,18 @@ const VideoCard: React.FC<VideoCardProps> = ({
           </div>
       )}
 
-      {/* Seek Overlay - Top Center (Replaced Center) */}
+      {/* Seek Overlay - Top Center (Smaller) */}
       {seekOffset !== null && (
           <div className="absolute top-24 left-0 right-0 flex flex-col items-center justify-start z-50 pointer-events-none">
-              <div className="flex flex-col items-center gap-2 bg-black/40 backdrop-blur-md px-6 py-4 rounded-2xl">
+              <div className="flex flex-col items-center gap-1 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl">
                   {seekOffset > 0 ? (
-                       <FastForward className="w-10 h-10 text-white/90 fill-white/20" />
+                       <FastForward className="w-6 h-6 text-white/90 fill-white/20" />
                   ) : (
-                       <Rewind className="w-10 h-10 text-white/90 fill-white/20" />
+                       <Rewind className="w-6 h-6 text-white/90 fill-white/20" />
                   )}
-                  <div className="text-2xl font-bold text-white drop-shadow-lg">
+                  <div className="text-lg font-bold text-white drop-shadow-lg">
                       {seekOffset > 0 ? '+' : ''}{seekOffset}s
                   </div>
-                  {videoRef.current && (
-                      <div className="text-white/70 text-xs font-mono mt-1">
-                          {new Date(Math.max(0, videoRef.current.currentTime + seekOffset) * 1000).toISOString().substr(14, 5)} 
-                          {' / '}
-                          {new Date(videoRef.current.duration * 1000).toISOString().substr(14, 5)}
-                      </div>
-                  )}
               </div>
           </div>
       )}
@@ -279,8 +318,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
           <div className="flex flex-col items-center gap-1">
               <button 
-                onTouchEnd={handleFavorite}
-                onClick={handleFavorite} // Desktop fallback
+                onTouchStart={stopProp} 
+                onMouseDown={stopProp}
+                onClick={handleFavorite} 
                 className="p-2 rounded-full transition-transform active:scale-75"
               >
                   <Heart 
@@ -295,8 +335,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
           <div className="flex flex-col items-center gap-1">
               <button 
-                onTouchEnd={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}
-                onClick={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}
+                onTouchStart={stopProp}
+                onMouseDown={stopProp}
+                onClick={handleInfoToggle}
                 className="p-2 rounded-full bg-white/10 backdrop-blur-sm active:bg-white/20"
               >
                   <Info className="w-7 h-7 text-white drop-shadow-md" />
@@ -305,7 +346,8 @@ const VideoCard: React.FC<VideoCardProps> = ({
           </div>
 
            <div 
-                onTouchEnd={handleMuteToggle}
+                onTouchStart={stopProp}
+                onMouseDown={stopProp}
                 onClick={handleMuteToggle}
                 className={`mt-4 w-10 h-10 rounded-full bg-zinc-900 border-4 cursor-pointer transition-colors duration-300 flex items-center justify-center overflow-hidden ${isMuted ? 'border-red-500/80' : 'border-zinc-800'} ${isPlaying ? 'animate-[spin_4s_linear_infinite]' : ''}`}
            >
@@ -325,12 +367,14 @@ const VideoCard: React.FC<VideoCardProps> = ({
             
             <div className="flex items-center gap-3 text-xs text-white/90 mb-2 font-medium drop-shadow-md">
                {item.ProductionYear && <span className="bg-white/20 px-1.5 py-0.5 rounded">{item.ProductionYear}</span>}
-               <span>{formatTime(item.RunTimeTicks)}</span>
+               <span>{formatTimeText(item.RunTimeTicks)}</span>
                <span className="uppercase border border-white/30 px-1 rounded text-[10px]">{item.MediaType || '视频'}</span>
             </div>
 
             <div 
-                onClick={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}
+                onTouchStart={stopProp}
+                onMouseDown={stopProp}
+                onClick={handleInfoToggle}
                 className={`text-white/80 text-sm drop-shadow-md transition-all duration-300 cursor-pointer ${showInfo ? 'line-clamp-none overflow-y-auto max-h-[40vh]' : 'line-clamp-2'}`}
             >
                 {item.Overview || '暂无简介'}
@@ -338,7 +382,9 @@ const VideoCard: React.FC<VideoCardProps> = ({
             
             {!showInfo && item.Overview && (
                 <button 
-                    onClick={(e) => { e.stopPropagation(); setShowInfo(true); }}
+                    onTouchStart={stopProp}
+                    onMouseDown={stopProp}
+                    onClick={handleInfoToggle}
                     className="text-white/60 text-xs font-semibold mt-1"
                 >
                     更多
@@ -349,11 +395,26 @@ const VideoCard: React.FC<VideoCardProps> = ({
 
       {/* Progress Bar for Videos > 3 minutes (180s) */}
       {duration > 180 && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-50 pointer-events-none">
-              <div 
-                  className="h-full bg-indigo-500 transition-all duration-200"
-                  style={{ width: `${(currentTime / duration) * 100}%` }}
-              />
+          <div 
+            className="absolute bottom-8 left-4 right-4 h-8 flex items-center z-50 pointer-events-auto touch-none"
+            onTouchStart={handleSeekStart}
+            onTouchMove={handleSeekMove}
+            onTouchEnd={handleSeekEnd}
+            onClick={(e) => e.stopPropagation()} 
+          >
+              {/* Visual Track */}
+              <div className="w-full h-1 bg-white/30 rounded-full overflow-hidden relative">
+                   {/* Played Portion */}
+                  <div 
+                      className="h-full bg-indigo-500 transition-all duration-75"
+                      style={{ width: `${(currentTime / duration) * 100}%` }}
+                  />
+              </div>
+               {/* Thumb / Slider Handle */}
+               <div 
+                    className="absolute w-4 h-4 bg-white rounded-full shadow-lg transform -translate-x-2"
+                    style={{ left: `${(currentTime / duration) * 100}%` }}
+               />
           </div>
       )}
     </div>
