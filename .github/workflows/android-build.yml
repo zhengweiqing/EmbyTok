@@ -1,58 +1,58 @@
-# 工作流名称
+# 工作流名称：显示在GitHub Actions面板中
 name: Android Build
 
-# 触发条件：推送到main分支、拉取请求，或手动触发
+# 触发条件：满足以下任一条件则执行构建
 on:
   push:
-    branches: [ main ]
+    branches: [ main ]  # 推送到main分支时自动触发
   pull_request:
-    branches: [ main ]
-  workflow_dispatch: # 手动触发
+    branches: [ main ]  # 提交PR到main分支时自动触发
+  workflow_dispatch:    # 手动触发（核心，新手优先用这个）
 
-# 工作流任务
+# 定义构建任务
 jobs:
   build:
-    # 运行环境：Ubuntu最新版
+    # 构建运行的系统环境：Ubuntu最新版（安卓编译推荐Linux）
     runs-on: ubuntu-latest
 
+    # 构建步骤（按顺序执行）
     steps:
-      # 步骤1：检出仓库代码
+      # 步骤1：检出仓库代码到构建服务器
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4  # 使用官方的检出动作
 
-      # 步骤2：配置JDK（Android编译需要JDK 17/11，根据项目适配）
+      # 步骤2：配置JDK（安卓编译依赖JDK，版本适配绝大多数项目）
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: gradle # 缓存gradle依赖，加速构建
+          java-version: '17'       # 安卓Gradle 7+推荐JDK 17，若项目报错可换11
+          distribution: 'temurin'  # 使用Eclipse Temurin JDK（稳定）
+          cache: gradle            # 缓存Gradle依赖，加速后续构建
 
-      # 步骤3：配置Android SDK
+      # 步骤3：配置Android SDK（自动下载对应版本）
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # 按需指定Android SDK版本（例如compileSdkVersion 34）
-          android-sdk-build-tools: 34.0.0
-          android-sdk-platforms: android-34
+          android-sdk-build-tools: 34.0.0  # 构建工具版本（适配多数项目）
+          android-sdk-platforms: android-34 # SDK平台版本（与compileSdkVersion一致）
 
-      # 步骤4：授予gradlew执行权限
+      # 步骤4：授予gradlew执行权限（Linux系统必需）
       - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+        run: chmod +x gradlew  # 给gradle脚本添加可执行权限
 
-      # 步骤5：编译Android应用（Release包）
+      # 步骤5：编译Android Release包（未签名，新手先编译这个）
       - name: Build release APK/AAB
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease --stacktrace  # 执行gradle编译命令
         env:
-          # 传入Emby服务器地址（如果项目支持环境变量注入）
+          # 注入Emby服务器地址（关联步骤2的Secret）
           EMBY_SERVER_URL: ${{ secrets.EMBY_SERVER_URL }}
 
-      # 步骤6：上传编译产物（APK/AAB）作为Action Artifact
+      # 步骤6：上传编译产物（方便下载）
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyTok-Android
-          path: |
+          name: EmbyTok-Android  # 产物包名称（显示在下载列表）
+          path: |                # 产物路径（匹配安卓编译输出目录）
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
-          retention-days: 7 # 产物保留7天
+          retention-days: 7      # 产物保留7天（避免占用空间）
