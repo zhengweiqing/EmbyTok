@@ -30,26 +30,42 @@ jobs:
 
       - name: Install Android SDK components
         run: |
-          # 创建SDK目录
+          # ==================== 核心修复：先创建目录并下载解压 ====================
+          # 创建SDK目录（确保层级完整）
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          # 下载并解压cmdline-tools（最新版）
-          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -o cmdline-tools.zip
+          # 下载cmdline-tools（最新稳定版，替换为清华镜像提速，避免超时）
+          curl -sSL https://mirrors.tuna.tsinghua.edu.cn/android/repository/commandlinetools-linux-10406996_latest.zip -o cmdline-tools.zip
+          # 解压并校验（-q静默解压，-d指定目录）
           unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          # 重命名目录（解决SDK管理器路径问题）
+          # 重命名目录（SDK要求cmdline-tools下必须有latest子目录）
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-          # 配置环境变量
+
+          # ==================== 关键修复：当前步骤临时生效环境变量 ====================
+          # export 让变量在当前shell立即生效（GITHUB_ENV仅对后续步骤生效）
+          export ANDROID_HOME=$ANDROID_SDK_ROOT
+          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH
+
+          # ==================== 验证sdkmanager是否可识别 ====================
+          echo "=== 校验sdkmanager路径 ==="
+          which sdkmanager || (echo "sdkmanager仍未找到，检查路径！" && exit 1)
+          echo "=== 打印sdkmanager版本 ==="
+          sdkmanager --version
+
+          # ==================== 安装SDK组件 ====================
+          # 接受所有许可（修复Broken pipe：先确保sdkmanager存在再执行）
+          yes | sdkmanager --licenses
+          # 安装指定SDK组件（加--verbose打印日志，方便排查）
+          sdkmanager --verbose "platforms;android-$ANDROID_COMPILE_SDK" "build-tools;$ANDROID_BUILD_TOOLS"
+
+          # ==================== 给后续步骤传递环境变量 ====================
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH" >> $GITHUB_ENV
-          # 接受所有SDK许可协议（无需交互）
-          yes | sdkmanager --licenses
-          # 安装指定的SDK平台和构建工具
-          sdkmanager "platforms;android-$ANDROID_COMPILE_SDK" "build-tools;$ANDROID_BUILD_TOOLS"
 
       - name: Grant execute permission to Gradle wrapper
         run: chmod +x ./gradlew
 
       - name: Build with Gradle
-        run: ./gradlew assembleDebug --stacktrace # --stacktrace便于排查构建错误
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
