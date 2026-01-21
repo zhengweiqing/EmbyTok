@@ -10,6 +10,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      # 配置SDK版本（和项目build.gradle一致）
+      ANDROID_COMPILE_SDK: "34"
+      ANDROID_BUILD_TOOLS: "34.0.0"
+      # SDK下载基础路径
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -18,24 +25,31 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin' # 推荐的JDK发行版，兼容Android构建
+          distribution: 'temurin'
           cache: gradle # 缓存Gradle依赖，加速构建
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android-sdk@v3
-        with:
-          # 核心修正：所有SDK组件合并到packages参数，用逗号分隔
-          packages: |
-            platforms;android-34       # 对应项目的compileSdk 34
-            build-tools;34.0.0         # 对应app/build.gradle的buildToolsVersion
-          cmdline-tools-version: latest # 使用最新的cmdline-tools
-          accept-android-sdk-licenses: true # 自动接受SDK许可（必须）
+      - name: Install Android SDK components
+        run: |
+          # 创建SDK目录
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          # 下载并解压cmdline-tools（最新版）
+          curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip -o cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          # 重命名目录（解决SDK管理器路径问题）
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          # 配置环境变量
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH" >> $GITHUB_ENV
+          # 接受所有SDK许可协议（无需交互）
+          yes | sdkmanager --licenses
+          # 安装指定的SDK平台和构建工具
+          sdkmanager "platforms;android-$ANDROID_COMPILE_SDK" "build-tools;$ANDROID_BUILD_TOOLS"
 
       - name: Grant execute permission to Gradle wrapper
-        run: chmod +x ./gradlew # 赋予gradlew执行权限，避免构建报错
+        run: chmod +x ./gradlew
 
       - name: Build with Gradle
-        run: ./gradlew assembleDebug # 构建Debug包，也可改为assembleRelease
+        run: ./gradlew assembleDebug --stacktrace # --stacktrace便于排查构建错误
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
