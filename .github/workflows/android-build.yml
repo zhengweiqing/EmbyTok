@@ -33,26 +33,26 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          android-sdk-build-tools: 34.0.0  # 构建工具版本（适配多数项目）
-          android-sdk-platforms: android-34 # SDK平台版本（与compileSdkVersion一致）
+          android-sdk-build-tools: 34.0.0  # 构建工具版本（需与项目build.gradle中一致）
+          android-sdk-platforms: android-34 # SDK平台版本（需与compileSdkVersion一致）
 
-      # 步骤4：授予gradlew执行权限（Linux系统必需）
+      # 步骤4：授予gradlew执行权限（Linux系统必需，避免"权限不足"报错）
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew  # 给gradle脚本添加可执行权限
 
-      # 步骤5：编译Android Release包（未签名，新手先编译这个）
+      # 步骤5：编译Android Release包（--stacktrace用于报错时输出详细堆栈，便于排查）
       - name: Build release APK/AAB
         run: ./gradlew assembleRelease --stacktrace  # 执行gradle编译命令
         env:
-          # 注入Emby服务器地址（关联步骤2的Secret）
+          # 注入Emby服务器地址（需在GitHub仓库->Settings->Secrets中配置EMBY_SERVER_URL）
           EMBY_SERVER_URL: ${{ secrets.EMBY_SERVER_URL }}
 
-      # 步骤6：上传编译产物（方便下载）
+      # 步骤6：上传编译产物（方便下载，支持APK和AAB两种格式）
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: EmbyTok-Android  # 产物包名称（显示在下载列表）
-          path: |                # 产物路径（匹配安卓编译输出目录）
+          name: EmbyTok-Android  # 产物包名称（显示在Actions下载列表）
+          path: |                # 产物路径（匹配安卓默认编译输出目录）
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
-          retention-days: 7      # 产物保留7天（避免占用空间）
+          retention-days: 7      # 产物保留7天（避免占用仓库存储空间）
