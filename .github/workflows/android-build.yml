@@ -11,11 +11,11 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # 配置SDK版本（和项目build.gradle一致）
       ANDROID_COMPILE_SDK: "34"
       ANDROID_BUILD_TOOLS: "34.0.0"
-      # SDK下载基础路径
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      # 最新cmdline-tools版本（Google官方2025年稳定版）
+      CMDLINE_TOOLS_VERSION: "11076708"
 
     steps:
       - name: Checkout code
@@ -26,38 +26,49 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle # 缓存Gradle依赖，加速构建
+          cache: gradle
 
       - name: Install Android SDK components
         run: |
-          # ==================== 核心修复：先创建目录并下载解压 ====================
-          # 创建SDK目录（确保层级完整）
+          # ==================== 1. 确保依赖工具安装 ====================
+          # 安装unzip（ubuntu-latest默认有，但兜底）
+          sudo apt-get update && sudo apt-get install -y unzip
+
+          # ==================== 2. 创建目录并下载完整的cmdline-tools ====================
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          # 下载cmdline-tools（最新稳定版，替换为清华镜像提速，避免超时）
-          curl -sSL https://mirrors.tuna.tsinghua.edu.cn/android/repository/commandlinetools-linux-10406996_latest.zip -o cmdline-tools.zip
-          # 解压并校验（-q静默解压，-d指定目录）
+          # 改用Google官方地址 + 强下载参数（-f失败则退出，-L处理重定向，--retry重试3次）
+          curl -fL --retry 3 \
+            "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" \
+            -o cmdline-tools.zip
+
+          # ==================== 3. 校验ZIP文件完整性 ====================
+          echo "=== 校验ZIP文件是否有效 ==="
+          unzip -t cmdline-tools.zip || (echo "ZIP文件损坏，下载失败！" && exit 1)
+
+          # ==================== 4. 解压并修正目录结构 ====================
           unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          # 重命名目录（SDK要求cmdline-tools下必须有latest子目录）
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
 
-          # ==================== 关键修复：当前步骤临时生效环境变量 ====================
-          # export 让变量在当前shell立即生效（GITHUB_ENV仅对后续步骤生效）
+          # ==================== 5. 临时生效环境变量 ====================
           export ANDROID_HOME=$ANDROID_SDK_ROOT
           export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH
 
-          # ==================== 验证sdkmanager是否可识别 ====================
+          # ==================== 6. 验证sdkmanager ====================
           echo "=== 校验sdkmanager路径 ==="
-          which sdkmanager || (echo "sdkmanager仍未找到，检查路径！" && exit 1)
+          which sdkmanager || (echo "sdkmanager未找到！" && exit 1)
           echo "=== 打印sdkmanager版本 ==="
           sdkmanager --version
 
-          # ==================== 安装SDK组件 ====================
-          # 接受所有许可（修复Broken pipe：先确保sdkmanager存在再执行）
+          # ==================== 7. 配置镜像+安装SDK组件 ====================
+          # 配置清华镜像加速组件下载（避免官方源超时）
+          mkdir -p ~/.android/
+          echo "https://mirrors.tuna.tsinghua.edu.cn/android/repository/" > ~/.android/repositories.cfg
+          # 接受许可
           yes | sdkmanager --licenses
-          # 安装指定SDK组件（加--verbose打印日志，方便排查）
+          # 安装组件
           sdkmanager --verbose "platforms;android-$ANDROID_COMPILE_SDK" "build-tools;$ANDROID_BUILD_TOOLS"
 
-          # ==================== 给后续步骤传递环境变量 ====================
+          # ==================== 8. 传递环境变量给后续步骤 ====================
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH" >> $GITHUB_ENV
 
