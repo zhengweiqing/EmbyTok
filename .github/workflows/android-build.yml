@@ -14,12 +14,16 @@ jobs:
       ANDROID_COMPILE_SDK: "34"
       ANDROID_BUILD_TOOLS: "34.0.0"
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
-      # 最新cmdline-tools版本（Google官方2025年稳定版）
       CMDLINE_TOOLS_VERSION: "11076708"
+      # 指定Gradle版本（根据项目实际需求调整，比如8.5）
+      GRADLE_VERSION: "8.5"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        # 确保拉取完整仓库（默认浅克隆可能不影响，但兜底）
+        with:
+          fetch-depth: 1
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -30,50 +34,50 @@ jobs:
 
       - name: Install Android SDK components
         run: |
-          # ==================== 1. 确保依赖工具安装 ====================
-          # 安装unzip（ubuntu-latest默认有，但兜底）
           sudo apt-get update && sudo apt-get install -y unzip
-
-          # ==================== 2. 创建目录并下载完整的cmdline-tools ====================
           mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          # 改用Google官方地址 + 强下载参数（-f失败则退出，-L处理重定向，--retry重试3次）
           curl -fL --retry 3 \
             "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" \
             -o cmdline-tools.zip
-
-          # ==================== 3. 校验ZIP文件完整性 ====================
-          echo "=== 校验ZIP文件是否有效 ==="
-          unzip -t cmdline-tools.zip || (echo "ZIP文件损坏，下载失败！" && exit 1)
-
-          # ==================== 4. 解压并修正目录结构 ====================
+          unzip -t cmdline-tools.zip || (echo "ZIP损坏！" && exit 1)
           unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
           mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-
-          # ==================== 5. 临时生效环境变量 ====================
+          
           export ANDROID_HOME=$ANDROID_SDK_ROOT
           export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH
-
-          # ==================== 6. 验证sdkmanager ====================
-          echo "=== 校验sdkmanager路径 ==="
+          
           which sdkmanager || (echo "sdkmanager未找到！" && exit 1)
-          echo "=== 打印sdkmanager版本 ==="
           sdkmanager --version
-
-          # ==================== 7. 配置镜像+安装SDK组件 ====================
-          # 配置清华镜像加速组件下载（避免官方源超时）
+          
           mkdir -p ~/.android/
           echo "https://mirrors.tuna.tsinghua.edu.cn/android/repository/" > ~/.android/repositories.cfg
-          # 接受许可
           yes | sdkmanager --licenses
-          # 安装组件
           sdkmanager --verbose "platforms;android-$ANDROID_COMPILE_SDK" "build-tools;$ANDROID_BUILD_TOOLS"
-
-          # ==================== 8. 传递环境变量给后续步骤 ====================
+          
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH" >> $GITHUB_ENV
 
-      - name: Grant execute permission to Gradle wrapper
-        run: chmod +x ./gradlew
+      - name: 修复Gradle Wrapper（核心步骤）
+        run: |
+          # 1. 检查现有Wrapper文件（若缺失则重建）
+          if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
+            echo "=== 重建Gradle Wrapper ==="
+            # 删除无效的wrapper配置
+            rm -rf gradle/wrapper
+            # 用SDKMAN安装指定版本Gradle，生成新的Wrapper
+            curl -s "https://get.sdkman.io" | bash
+            source "$HOME/.sdkman/bin/sdkman-init.sh"
+            sdk install gradle $GRADLE_VERSION
+            # 在项目根目录生成Wrapper
+            gradle wrapper --gradle-version $GRADLE_VERSION --distribution-type bin
+          fi
+
+          # 2. 强制赋予gradlew执行权限（兜底）
+          chmod +x ./gradlew
+
+          # 3. 验证Wrapper完整性
+          echo "=== 验证Gradle Wrapper ==="
+          ./gradlew --version || (echo "Wrapper仍异常！" && exit 1)
 
       - name: Build with Gradle
         run: ./gradlew assembleDebug --stacktrace
