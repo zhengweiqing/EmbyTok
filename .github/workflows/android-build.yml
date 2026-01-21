@@ -15,13 +15,11 @@ jobs:
       ANDROID_BUILD_TOOLS: "34.0.0"
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
       CMDLINE_TOOLS_VERSION: "11076708"
-      # 指定Gradle版本（根据项目实际需求调整，比如8.5）
       GRADLE_VERSION: "8.5"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        # 确保拉取完整仓库（默认浅克隆可能不影响，但兜底）
         with:
           fetch-depth: 1
 
@@ -57,30 +55,24 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH" >> $GITHUB_ENV
 
-      - name: 修复Gradle Wrapper（核心步骤）
+      - name: 修复Gradle Wrapper
         run: |
-          # 1. 检查现有Wrapper文件（若缺失则重建）
           if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
             echo "=== 重建Gradle Wrapper ==="
-            # 删除无效的wrapper配置
-            rm -rf gradle/wrapper
-            # 用SDKMAN安装指定版本Gradle，生成新的Wrapper
             curl -s "https://get.sdkman.io" | bash
             source "$HOME/.sdkman/bin/sdkman-init.sh"
             sdk install gradle $GRADLE_VERSION
-            # 在项目根目录生成Wrapper
             gradle wrapper --gradle-version $GRADLE_VERSION --distribution-type bin
           fi
-
-          # 2. 强制赋予gradlew执行权限（兜底）
           chmod +x ./gradlew
-
-          # 3. 验证Wrapper完整性
-          echo "=== 验证Gradle Wrapper ==="
           ./gradlew --version || (echo "Wrapper仍异常！" && exit 1)
 
       - name: Build with Gradle
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          # 关键：添加兼容参数，禁用仓库优先级检查（兜底）
+          ./gradlew assembleDebug --stacktrace \
+            -Dorg.gradle.settings.preferSettingsRepositories=false \
+            --info
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
