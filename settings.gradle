@@ -1,19 +1,20 @@
+// settings.gradle
 pluginManagement {
     repositories {
-        google()
-        mavenCentral()
         gradlePluginPortal()
+        google() // 插件仓库
+        mavenCentral()
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) // 强制禁用项目仓库
     repositories {
-        google()
+        google() // 依赖仓库
         mavenCentral()
+        // 其他第三方仓库（如jitpack）
+        // maven { url 'https://jitpack.io' }
     }
 }
 
-// 项目名称改为你的仓库名EmbyTok
 rootProject.name = "EmbyTok"
-// 确保包含app模块（核心模块）
 include ':app'
